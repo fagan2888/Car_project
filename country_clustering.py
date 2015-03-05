@@ -16,60 +16,93 @@ from sklearn.decomposition import NMF
 from scipy.spatial.distance import pdist
 from scipy.spatial.distance import squareform
 
-file = open('/Users/LaughingMan/Desktop/Data/Cars/cleaned_car_data.pkl', 'rb')
-cars = pkl.load(file)
-file.close()
+class CustomerCluster(object):
 
-pca = PCA(n_components = 15) #this captures about 90% of the variance.
-target_pca = pca.fit_transform(target)
-kmean = KMeans(n_clusters=15)
-kmean.fit(target_pca)
-clusters = kmean.predict(target_pca)
-cars['cluster'] = clusters
+    def __init__(self,car_data,sipp_decomp):
+        self.cars = None
+        self.binarized_sipp = None
+        self.country_dummies = None
+        self.country_dummies_colnames = None
+        self.nb_confusion_mat = None
+        self.km_confusion_mat = None
+        self.car_preds = None
 
-origin = pd.get_dummies(cars['customer_country'])
-origin.columns = ['o'+ x for x in origin.columns]
-dest = pd.get_dummies(cars['destination'])
-dest.columns = ['d'+ x for x in dest.columns]
+    def load(self,
+             car_data = '/Users/LaughingMan/Desktop/Data/Cars/cleaned_car_data.pkl',
+             sipp_decomp = '/Users/LaughingMan/Desktop/Data/Cars/cleaned_car_data.pkl'):
+        file = open(car_data, 'rb')
+        self.cars = pkl.load(file)
+        file.close()
 
-cars['origin_dest'] = cars['customer_country'].apply(lambda x: 'o' + str(x)) + cars['destination'].apply(lambda x: 'd' + str(x))
+        file = open(sipp_decomp, 'rb')
+        self.binarized_sipp = pkl.load(file)
+        file.close()
 
-pairwise_names = []
-for o in origin.columns:
-    for d in dest.columns:
-        pairwise_names.append(o+d)
+    def binary_pca_clustering(self,pca_components=15,kmean_clusters=15):
+        pca = PCA(n_components = pca_components) #this captures about 90% of the variance.
+        target_pca = pca.fit_transform(self.binarized_sipp)
+        kmean = KMeans(n_clusters = kmean_clusters)
+        kmean.fit(target_pca)
+        clusters = kmean.predict(target_pca)
+        self.cars['cluster'] = clusters
 
-pairwise_matrix = sparse.csc_matrix((96341,1))
-for o in origin.columns:
-    for d in dest.columns:
-        pairwise_matrix = sparse.hstack([pairwise_matrix, sparse.csr_matrix(origin[o]*dest[d]).T])
-pairwise_matrix = pairwise_matrix[:,1:]
+    def dummy_matrix(self):
+        origin = pd.get_dummies(self.cars['customer_country'])
+        origin.columns = ['o'+ x for x in origin.columns]
+        dest = pd.get_dummies(self.cars['destination'])
+        dest.columns = ['d'+ x for x in dest.columns]
 
-colnames = list(origin.columns) + list(dest.columns) + pairwise_names
+        self.cars['origin_dest'] = self.cars['customer_country'].apply(lambda x: 'o' + str(x)) + \
+                                   self.cars['destination'].apply(lambda x: 'd' + str(x))
 
-origin_sparse = sparse.csc_matrix(origin)
-dest_sparse = sparse.csc_matrix(dest)
+        pairwise_names = []
+        for o in origin.columns:
+            for d in dest.columns:
+                pairwise_names.append(o+d)
 
-all_dummies = sparse.hstack([origin_sparse,dest_sparse,pairwise_matrix])
+        pairwise_matrix = sparse.csc_matrix((96341,1))
+        for o in origin.columns:
+            for d in dest.columns:
+                pairwise_matrix = sparse.hstack([pairwise_matrix, sparse.csr_matrix(origin[o]*dest[d]).T])
+        pairwise_matrix = pairwise_matrix[:,1:]
 
-X_train, X_test, y_train, y_test = train_test_split(all_dummies, cars['cluster'], test_size=0.2, random_state=42)
-nb.fit(X_train,y_train)
-pred = nb.predict(X_test)
-cm = confusion_matrix(y_test,pred)
+        self.country_dummies_colnames = list(origin.columns) + list(dest.columns) + pairwise_names
 
-nb = BernoulliNB()
-nb.fit(all_dummies,cars['cluster'])
-car_preds = nb.predict_proba(all_dummies)
+        origin_sparse = sparse.csc_matrix(origin)
+        dest_sparse = sparse.csc_matrix(dest)
 
-file = open('/Users/LaughingMan/Desktop/Data/Cars/customer_p_data.pkl', 'wb')
-cars = pkl.dump(file)
-file.close()
+        self.country_dummies = sparse.hstack([origin_sparse,dest_sparse,pairwise_matrix])
 
-km = KMeans(n_clusters = 20)
-km.fit(car_preds)
-cars['car_pref_cluster'] = km.predict(car_preds)
+    def fit_nb_cartypes(self):
+        self.nb = BernoulliNB()
+        X_train, X_test, y_train, y_test = train_test_split(self.country_dummies,
+                                                            self.cars['cluster'],
+                                                            test_size=0.2,
+                                                            random_state=42)
+        self.nb.fit(X_train,y_train)
+        pred = self.nb.predict(X_test)
+        self.nb_confusion_mat = confusion_matrix(y_test, pred)
+
+        self.nb.fit(all_dummies, self.cars['cluster'])
+        self.car_preds = self.nb.predict_proba(all_dummies)
+
+    def fit_kmeans_customer_types(self, clusters = 20):
+        X_train, X_test, y_train, y_test = train_test_split(self.car_preds,
+                                                            self.cars['cluster'],
+                                                            test_size=0.2,
+                                                            random_state=42)
+        self.nb.fit(X_train,y_train)
+        pred = self.nb.predict(X_test)
+        self.km_confusion_mat = confusion_matrix(y_test,pred)
+
+        km = KMeans(n_clusters = clusters)
+        km.fit(self.car_preds)
+        self.cars['car_pref_cluster'] = km.predict(self.car_preds)
 
 
+# file = open('/Users/LaughingMan/Desktop/Data/Cars/customer_p_data.pkl', 'wb')
+# cars = pkl.dump(file)
+# file.close()
 
 # links = linkage(dmat, method = 'complete')
 # plt.figure(num=None, figsize=(20, 9), dpi=80, facecolor='w', edgecolor='k')
@@ -78,8 +111,6 @@ cars['car_pref_cluster'] = km.predict(car_preds)
 # normalized_pclass = normalize(car_preds.T)
 # tsvd = TruncatedSVD(n_components = 10, n_iter =10)
 # reduced_pclass = tsvd.fit_transform(normalized_pclass)
-
-
 
 # kf = KFold(n=96341, n_folds=5, shuffle=False, random_state=None)
 # nb = BernoulliNB()
