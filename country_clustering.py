@@ -20,10 +20,19 @@ file = open('/Users/LaughingMan/Desktop/Data/Cars/cleaned_car_data.pkl', 'rb')
 cars = pkl.load(file)
 file.close()
 
+pca = PCA(n_components = 15) #this captures about 90% of the variance.
+target_pca = pca.fit_transform(target)
+kmean = KMeans(n_clusters=15)
+kmean.fit(target_pca)
+clusters = kmean.predict(target_pca)
+cars['cluster'] = clusters
+
 origin = pd.get_dummies(cars['customer_country'])
 origin.columns = ['o'+ x for x in origin.columns]
 dest = pd.get_dummies(cars['destination'])
 dest.columns = ['d'+ x for x in dest.columns]
+
+cars['origin_dest'] = cars['customer_country'].apply(lambda x: 'o' + str(x)) + cars['destination'].apply(lambda x: 'd' + str(x))
 
 pairwise_names = []
 for o in origin.columns:
@@ -36,7 +45,7 @@ for o in origin.columns:
         pairwise_matrix = sparse.hstack([pairwise_matrix, sparse.csr_matrix(origin[o]*dest[d]).T])
 pairwise_matrix = pairwise_matrix[:,1:]
 
-colnames = origin.columns + dest.columns + pairwise_names
+colnames = list(origin.columns) + list(dest.columns) + pairwise_names
 
 origin_sparse = sparse.csc_matrix(origin)
 dest_sparse = sparse.csc_matrix(dest)
@@ -48,20 +57,20 @@ nb.fit(X_train,y_train)
 pred = nb.predict(X_test)
 cm = confusion_matrix(y_test,pred)
 
+nb = BernoulliNB()
 nb.fit(all_dummies,cars['cluster'])
 car_preds = nb.predict_proba(all_dummies)
 
-pca = PCA(n_components=20)
-reduced_pclass = pca.fit_transform(car_preds.T)
+file = open('/Users/LaughingMan/Desktop/Data/Cars/customer_p_data.pkl', 'wb')
+cars = pkl.dump(file)
+file.close()
 
-nmf = NMF(n_components=20)
-reduced_pclass = nmf.fit_transform(car_preds.T)
+km = KMeans(n_clusters = 20)
+km.fit(car_preds)
+cars['car_pref_cluster'] = km.predict(car_preds)
 
-U, s, V = np.linalg.svd(car_preds.T, full_matrices=False)
 
 
-# dmat = squareform(pdist(car_preds,'euclidean'))
-# dmat = np.nan_to_num(dmat)
 # links = linkage(dmat, method = 'complete')
 # plt.figure(num=None, figsize=(20, 9), dpi=80, facecolor='w', edgecolor='k')
 # dend = dendrogram(links, color_threshold = 2.8)
@@ -81,5 +90,5 @@ U, s, V = np.linalg.svd(car_preds.T, full_matrices=False)
 #     pred = nb.predict(X_test)
 #     print confusion_matrix(y_test,ypred)
 
-ohc = OneHotEncoder()
-y = ohc.fit_transform(cars['cluster'].apply(lambda x : str(x)))
+# ohc = OneHotEncoder()
+# y = ohc.fit_transform(cars['cluster'].apply(lambda x : str(x)))
