@@ -15,6 +15,9 @@ from sklearn.metrics import confusion_matrix
 from sklearn.decomposition import NMF
 from scipy.spatial.distance import pdist
 from scipy.spatial.distance import squareform
+from scipy.optimize import curve_fit
+from scipy.stats import gamma
+
 '''
 README:
 The CustomerCluster object takes in a sipp code decomposition anda dataset of
@@ -41,6 +44,7 @@ class CustomerCluster(object):
         self.nb_confusion_mat = None
         self.km_confusion_mat = None
         self.car_preds = None
+        self.new_priors = None
 
     def load(self,
              car_data = '/Users/LaughingMan/Desktop/Data/Cars/cleaned_car_data.pkl',
@@ -112,7 +116,17 @@ class CustomerCluster(object):
 
         self.country_dummies = sparse.hstack([origin_sparse,dest_sparse,pairwise_matrix])
 
-    def fit_nb_cartypes(self):
+    def tg(self, x, a, b, c ):
+        return gamma(a, loc = b, scale = c).pdf(x)
+
+    def create_nb_priors(self,flatten = .15):
+        prefs = self.cars['cluster'].value_counts()/sum(self.cars['cluster'].value_counts())
+        vals = np.array([x+1 for x in range(len(prefs))])
+        params, pcov = curve_fit(self.tg,vals,prefs)
+        new_priors = self.tg(vals, params[0]+flatten, params[1], params[2])
+        self.new_priors = new_priors/sum(new_priors)
+
+    def fit_nb_cartypes(self, use_weights=False):
         '''
         INPUT: None
         OUTPUT: None
@@ -122,7 +136,10 @@ class CustomerCluster(object):
         creates a probability ranking over clusters for each individual in the
         dataset.
         '''
-        self.nb = BernoulliNB()
+        if use_weights:
+            self.nb = BernoulliNB()
+        else:
+            self.nb = BernoulliNB(class_prior= self.new_priors)
         X_train, X_test, y_train, y_test = train_test_split(self.country_dummies,
                                                             self.cars['cluster'],
                                                             test_size=0.2,
