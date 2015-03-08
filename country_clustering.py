@@ -1,40 +1,36 @@
 import pandas as pd
 import numpy as np
-from itertools import product, chain
 from sklearn.decomposition import PCA
-from sklearn.preprocessing import normalize
 from sklearn.cluster import KMeans
 import pickle as pkl
 from scipy import sparse
-from sklearn.preprocessing import OneHotEncoder
-from sklearn.decomposition import TruncatedSVD
 from sklearn.naive_bayes import BernoulliNB
 from sklearn.cross_validation import train_test_split
-from sklearn.cross_validation import KFold
 from sklearn.metrics import confusion_matrix
-from sklearn.decomposition import NMF
-from scipy.spatial.distance import pdist
-from scipy.spatial.distance import squareform
 from scipy.optimize import curve_fit
 from scipy.stats import gamma
 
 '''
 README:
-The CustomerCluster object takes in a sipp code decomposition anda dataset of
+The CustomerCluster object takes in a sipp code decomposition and a dataset of
 origin/destination countries. Note that the rows of the sipp code decomposition
-need to correspond with the origin/destination rows. The CustomerCluster operates
-in the following order:
+need to correspond with the origin/destination rows. The CustomerCluster
+operates in the following order:
 1) load() : load the datasets
 2) binary_pca_clustering() : does a PCA on the sipp code decomposition,
                              extracts similar cars clusters via KMeans
 3) dummy_matrix() : binarizes the origin/destination dataset and creates all
                     possible interaction terms.
-4) fit_nb_cartypes() : creates a probability ranking of the kinds of cars a
-                       customer will buy depending on the origin_destion dummy matrix.
-5) fit_kmeans_customer_types() : creates clusters of different customer types
+4) create_nb_priors() : Optional. Creates a prior distribution for the Naieve
+                        Bayes that spreads the likelyhood of each car class.
+5) fit_nb_cartypes() : creates a probability ranking of the kinds of cars a
+                       customer will buy depending on the origin_destion dummy
+                       matrix.
+6) fit_kmeans_customer_types() : creates clusters of different customer types
                                  depending on their probability ranking from
                                  step 4.
 '''
+
 class CustomerCluster(object):
     def __init__(self):
         self.cars = None
@@ -45,6 +41,7 @@ class CustomerCluster(object):
         self.km_confusion_mat = None
         self.car_preds = None
         self.new_priors = None
+        self.pca = None
 
     def load(self,
              car_data = '/Users/LaughingMan/Desktop/Data/Cars/cleaned_car_data.pkl',
@@ -73,8 +70,8 @@ class CustomerCluster(object):
         clustering to find cars with similar properties. It then assigns those
         car clusters to customers in the origin_destion dataframe.
         '''
-        pca = PCA(n_components = pca_components)
-        target_pca = pca.fit_transform(self.binarized_sipp)
+        self.pca = PCA(n_components = pca_components)
+        target_pca = self.pca.fit_transform(self.binarized_sipp)
         kmean = KMeans(n_clusters = kmean_clusters)
         kmean.fit(target_pca)
         clusters = kmean.predict(target_pca)
@@ -95,8 +92,9 @@ class CustomerCluster(object):
         dest = pd.get_dummies(self.cars['destination'])
         dest.columns = ['d'+ x for x in dest.columns]
 
-        self.cars['origin_dest'] = self.cars['customer_country'].apply(lambda x: 'o' + str(x)) + \
-                                   self.cars['destination'].apply(lambda x: 'd' + str(x))
+        self.cars['origin_dest'] = \
+            self.cars['customer_country'].apply(lambda x: 'o' + str(x)) + \
+            self.cars['destination'].apply(lambda x: 'd' + str(x))
 
         pairwise_names = []
         for o in origin.columns:
@@ -106,24 +104,36 @@ class CustomerCluster(object):
         pairwise_matrix = sparse.csc_matrix((96341,1))
         for o in origin.columns:
             for d in dest.columns:
-                pairwise_matrix = sparse.hstack([pairwise_matrix, sparse.csr_matrix(origin[o]*dest[d]).T])
+                pairwise_matrix = sparse.hstack([pairwise_matrix,
+                    sparse.csr_matrix(origin[o]*dest[d]).T])
         pairwise_matrix = pairwise_matrix[:,1:]
 
-        self.country_dummies_colnames = list(origin.columns) + list(dest.columns) + pairwise_names
+        self.country_dummies_colnames = list(origin.columns) + \
+                                        list(dest.columns) + \
+                                        pairwise_names
 
         origin_sparse = sparse.csc_matrix(origin)
         dest_sparse = sparse.csc_matrix(dest)
 
-        self.country_dummies = sparse.hstack([origin_sparse,dest_sparse,pairwise_matrix])
-
-    def tg(self, x, a, b, c ):
-        return gamma(a, loc = b, scale = c).pdf(x)
+        self.country_dummies = sparse.hstack([origin_sparse,
+                                              dest_sparse,
+                                              pairwise_matrix])
 
     def create_nb_priors(self,flatten = .15):
-        prefs = self.cars['cluster'].value_counts()/sum(self.cars['cluster'].value_counts())
+        '''
+        INPUT: flatten parameter.
+        OUTPUT: None.
+
+        This fits the prior distribution of car selections to a gaussian
+        distribtuion it then creates a new series of priors by flattening the
+        distribution. These priors are then used in the Naieve Bayes predict
+        proba.
+        '''
+        prefs = self.cars['cluster'].value_counts()/ \
+                sum(self.cars['cluster'].value_counts())
         vals = np.array([x+1 for x in range(len(prefs))])
-        params, pcov = curve_fit(self.tg,vals,prefs)
-        new_priors = self.tg(vals, params[0]+flatten, params[1], params[2])
+        params, pcov = curve_fit(tg, vals, prefs)
+        new_priors = tg(vals, params[0]+flatten, params[1], params[2])
         self.new_priors = new_priors/sum(new_priors)
 
     def fit_nb_cartypes(self, use_weights=False):
@@ -137,14 +147,14 @@ class CustomerCluster(object):
         dataset.
         '''
         if use_weights:
-            self.nb = BernoulliNB()
+            self.nb = BernoulliNB(class_prior = self.new_priors)
         else:
-            self.nb = BernoulliNB(class_prior= self.new_priors)
-        X_train, X_test, y_train, y_test = train_test_split(self.country_dummies,
-                                                            self.cars['cluster'],
-                                                            test_size=0.2,
-                                                            random_state=42)
-        self.nb.fit(X_train,y_train)
+            self.nb = BernoulliNB()
+
+        X_train, X_test, y_train, y_test = \
+            train_test_split(self.country_dummies, self.cars['cluster'],
+                             test_size=0.2, random_state=42)
+        self.nb.fit(X_train, y_train)
         pred = self.nb.predict(X_test)
         self.nb_confusion_mat = confusion_matrix(y_test, pred)
 
@@ -153,30 +163,41 @@ class CustomerCluster(object):
 
     def fit_kmeans_customer_types(self, clusters = 20):
         '''
-        INPUT: None
+        INPUT: integer, representing the number of customer types
         OUTPUT: None
 
         This uses KMeans on the prefference rankings in order to identify customer
         clusters with similar prefferences.
         '''
-        X_train, X_test, y_train, y_test = train_test_split(self.car_preds,
-                                                            self.cars['cluster'],
-                                                            test_size=0.2,
-                                                            random_state=42)
-        self.nb.fit(X_train,y_train)
+        X_train, X_test, y_train, y_test = \
+            train_test_split(self.car_preds, self.cars['cluster'],
+                             test_size=0.2, random_state=42)
+        self.nb.fit(X_train, y_train)
         pred = self.nb.predict(X_test)
-        self.km_confusion_mat = confusion_matrix(y_test,pred)
+        self.km_confusion_mat = confusion_matrix(y_test, pred)
 
         km = KMeans(n_clusters = clusters)
         km.fit(self.car_preds)
         self.cars['car_pref_cluster'] = km.predict(self.car_preds)
 
-    def present_ccluster(self, i):
+    def present_car_cluster(self,i):
+        '''
+        IMPUT: integer, representing a car cluster
+        OUTPUT: None.
+
+        Print top 10 most common cars in the specified cluster.
+        '''
+        print list(self.cars[self.cars['cluster'] == i]['car_name'].value_counts()[0:9].index)
+        print list(self.cars[self.cars['cluster'] == i]['sipp_code'].value_counts()[0:9].index)
+
+    def present_customer_cluster(self, i):
         '''
         IMPUT: integer, representing a customer cluster
-        OUTPUT: print top 3 most common cars for each car cluster in the order
-                that the car clusters are preffered as well as the top 5 associated
-                origin/destination pairs for that customer cluster.
+        OUTPUT: None
+
+        Print top 6 most common cars for each car cluster in the order
+        that the car clusters are preffered as well as the top 5 associated
+        origin/destination pairs for that customer cluster.
         '''
         indices = self.cars[self.cars['car_pref_cluster'] == i]['cluster'].value_counts()[0:6].index
         top_cars = []
@@ -186,40 +207,18 @@ class CustomerCluster(object):
         print 'origin/destination pairs: ' + \
               str(list(self.cars[self.cars['cluster'] == k]['origin_dest'].value_counts()[0:5].index))
         for j in top_cars:
-            print 'car cluster: ' +str(j[1])
+            print 'car cluster: ' + str(j[1])
             print 'top cars in cluster: ' + str(j[0])
 
-        #cc.cars[cc.cars['car_pref_cluster']==2]['cluster'].value_counts()[0:6].index
-        #cc.cars[c.cars['cluster'] == 2]['car_name'].value_counts()[0:3].index
+#This is just a function for returning the pdf of a gamma distriubtuion.
+def tg(x, a, b, c ):
+    return gamma(a, loc = b, scale = c).pdf(x)
+
 if __name__ == '__main__':
     cc = CustomerCluster()
     cc.load()
-    cc.binary_pca_clustering()
+    cc.binary_pca_clustering(pca_components=10,kmean_clusters=10)
     cc.dummy_matrix()
-    cc.fit_nb_cartypes()
+    cc.create_nb_priors(flatten=1)
+    cc.fit_nb_cartypes(use_weights=True)
     cc.fit_kmeans_customer_types()
-
-
-# file = open('/Users/LaughingMan/Desktop/Data/Cars/customer_p_data.pkl', 'wb')
-# cars = pkl.dump(file)
-# file.close()
-
-# links = linkage(dmat, method = 'complete')
-# plt.figure(num=None, figsize=(20, 9), dpi=80, facecolor='w', edgecolor='k')
-# dend = dendrogram(links, color_threshold = 2.8)
-
-# normalized_pclass = normalize(car_preds.T)
-# tsvd = TruncatedSVD(n_components = 10, n_iter =10)
-# reduced_pclass = tsvd.fit_transform(normalized_pclass)
-
-# kf = KFold(n=96341, n_folds=5, shuffle=False, random_state=None)
-# nb = BernoulliNB()
-# for train_index, test_index in kf:
-#     X_train, X_test = all_dummies[train_index,:], all_dummies[test_index,:]
-#     y_train, y_test = cars['cluster'][train_index], cars['cluster'][test_index]
-#     nb.fit(X_train,y_train)
-#     pred = nb.predict(X_test)
-#     print confusion_matrix(y_test,ypred)
-
-# ohc = OneHotEncoder()
-# y = ohc.fit_transform(cars['cluster'].apply(lambda x : str(x)))
