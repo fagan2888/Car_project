@@ -166,8 +166,8 @@ class CustomerCluster(object):
         INPUT: integer, representing the number of customer types
         OUTPUT: None
 
-        This uses KMeans on the prefference rankings in order to identify customer
-        clusters with similar prefferences.
+        This uses KMeans on the prefference rankings in order to identify
+        customer clusters with similar prefferences.
         '''
         X_train, X_test, y_train, y_test = \
             train_test_split(self.car_preds, self.cars['cluster'],
@@ -187,8 +187,10 @@ class CustomerCluster(object):
 
         Print top 10 most common cars in the specified cluster.
         '''
-        print list(self.cars[self.cars['cluster'] == i]['car_name'].value_counts()[0:9].index)
-        print list(self.cars[self.cars['cluster'] == i]['sipp_code'].value_counts()[0:9].index)
+        print list(self.cars[self.cars['cluster'] == i]\
+                ['car_name'].value_counts()[0:9].index)
+        print list(self.cars[self.cars['cluster'] == i]
+                ['sipp_code'].value_counts()[0:9].index)
 
     def present_customer_cluster(self, i):
         '''
@@ -199,13 +201,16 @@ class CustomerCluster(object):
         that the car clusters are preffered as well as the top 5 associated
         origin/destination pairs for that customer cluster.
         '''
-        indices = self.cars[self.cars['car_pref_cluster'] == i]['cluster'].value_counts()[0:6].index
+        indices = self.cars[self.cars['car_pref_cluster'] == i]\
+            ['cluster'].value_counts()[0:6].index
         top_cars = []
         for k in indices:
-            top_cars.append((list(self.cars[self.cars['cluster'] == k]['car_name'].value_counts()[0:5].index),k))
+            top_cars.append((list(self.cars[self.cars['cluster'] == k]\
+                ['car_name'].value_counts()[0:5].index),k))
 
         print 'origin/destination pairs: ' + \
-              str(list(self.cars[self.cars['cluster'] == k]['origin_dest'].value_counts()[0:5].index))
+              str(list(self.cars[self.cars['car_pref_cluster'] == i]\
+                  ['origin_dest'].value_counts()[0:5].index))
         for j in top_cars:
             print 'car cluster: ' + str(j[1])
             print 'top cars in cluster: ' + str(j[0])
