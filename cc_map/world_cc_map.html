@@ -21,12 +21,25 @@ body {
 <script src="http://d3js.org/d3.v3.min.js"></script>
 <script src="http://d3js.org/d3.geo.projection.v0.min.js"></script>
 <script src="http://d3js.org/topojson.v1.min.js"></script>
+<script src="https://code.jquery.com/jquery-1.10.2.js"></script>
 <script>
 
 var width = 1250,
     height = 680;
 
-var orig_dest = {US:{US:1,GB:3,FR:2}};
+var orig_dest = (function () {
+    var json = null;
+    $.ajax({
+        'async': false,
+        'global': false,
+        'url': "orig_dest.json",
+        'dataType': "json",
+        'success': function (data) {
+            json = data;
+        }
+    });
+    return json;
+})();
 
 var color = d3.scale.ordinal()
 		  .domain([1,2,3,4,5,6,7,8,9,10])
@@ -75,6 +88,7 @@ d3.json("topo_world.json", function(error, world) {
       .datum(topojson.mesh(world, world.objects.world, function(a, b) { return a !== b; }))
       .attr("class", "boundary")
       .attr("d", path);
+
 });
 
 d3.select(self.frameElement).style("height", height + "px");

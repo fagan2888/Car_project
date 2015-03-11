@@ -11,6 +11,7 @@ from scipy.optimize import curve_fit
 from scipy.stats import gamma
 import json
 import pdb
+from itertools import product
 
 '''
 README:
@@ -231,21 +232,24 @@ class CustomerCluster(object):
         Means that people coming to the US from SE are in cluster 1 and people
         coming to US from GB are in cluster 2.
         '''
-        d = {}
+        thedict = {}
         origin = np.unique(self.cars['customer_country'])
         origin = [x for x in origin if str(x) != 'nan']
         destination = np.unique(self.cars['destination'])
         destination = [x for x in destination if str(x) != 'nan']
 
         for o in origin:
-            d[o] = {}
             cond_o = self.cars['customer_country'] == o
+            thedict[o] = {}
             for d in destination:
                 cond_d = self.cars['destination'] == d
-                if self.cars[cond_o & cond_d].shape[0] > 0:
-                    print o, d
-                    d[o][d] = self.cars[cond_o & cond_d]['car_pref_cluster'].value_counts()
-        self.orig_dest = d
+                if np.sum(cond_o & cond_d) > 0:
+                    thedict[o][d] = int(self.cars[cond_o & cond_d]['car_pref_cluster'].value_counts()[0:1].index[0])
+        self.orig_dest = thedict
+
+        with open('/Users/LaughingMan/Desktop/zipfian/zipfian_project/country_analysis/cc_map/orig_dest.json', 'w') as outfile:
+            json.dump(thedict, outfile)
+
 
 
 #This is just a function for returning the pdf of a gamma distriubtuion.
