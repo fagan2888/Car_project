@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+
+body {
+  background: #fcfcfa;
+}
+
+.fill {
+  fill: #fff;
+}
+
+.boundary {
+  fill: none;
+  stroke: #fff;
+  stroke-width: .7px;
+}
+
+</style>
+<body>
+<script src="http://d3js.org/d3.v3.min.js"></script>
+<script src="http://d3js.org/d3.geo.projection.v0.min.js"></script>
+<script src="http://d3js.org/topojson.v1.min.js"></script>
+<script>
+
+var width = 1250,
+    height = 680;
+
+var orig_dest = {US:{US:1,GB:3,FR:2}};
+
+var color = d3.scale.ordinal()
+		  .domain([1,2,3,4,5,6,7,8,9,10])
+		  .range(["#8dd3c7","#ffffb3","#bebada","#fb8072","#80b1d3","#fdb462","#b3de69","#fccde5","#d9d9d9","#bc80bd"]);
+
+var projection = d3.geo.patterson()
+    .scale(200)
+    .translate([width / 2, height / 2])
+    .precision(.1);
+
+var path = d3.geo.path()
+    .projection(projection);
+
+var graticule = d3.geo.graticule();
+
+var svg = d3.select("body").append("svg")
+    .attr("width", width)
+    .attr("height", height);
+
+d3.json("topo_world.json", function(error, world) {
+  var  countries = topojson.feature(world, world.objects.world).features;
+  svg.selectAll(".country")
+      .data(countries)
+    	.enter().insert("path", ".graticule")
+      .attr("class", "country")
+      .attr("d", path)
+
+			.on("mouseover", function(d) {
+        d3.selectAll(".country")
+					.filter(function(c){
+						return c.id in orig_dest[d.id];
+					})
+          .attr("fill", function(c){
+						return color(orig_dest[d.id][c.id])
+					})
+			})
+
+		  .on("mouseout", function(d) {
+	      d3.selectAll(".country")
+					.transition()
+					.duration(250)
+	        .attr("fill", "#000");
+		  });
+
+  svg.insert("path", ".graticule")
+      .datum(topojson.mesh(world, world.objects.world, function(a, b) { return a !== b; }))
+      .attr("class", "boundary")
+      .attr("d", path);
+});
+
+d3.select(self.frameElement).style("height", height + "px");
+
+</script>
+
+
+<!--
+ogr2ogr -f GeoJSON -where "ISO3 NOT IN ('ATA')" \
+ 		/Users/LaughingMan/Desktop/zipfian/zipfian_project/world.json \
+		/Users/LaughingMan/Downloads/TM_WORLD_BORDERS-0.3/TM_WORLD_BORDERS-0.3.shp
+
+topojson \
+		-o topo_world.json \
+		--id-property ISO2 \
+		-- \
+		world.json
+-->

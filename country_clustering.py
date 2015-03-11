@@ -9,6 +9,8 @@ from sklearn.cross_validation import train_test_split
 from sklearn.metrics import confusion_matrix
 from scipy.optimize import curve_fit
 from scipy.stats import gamma
+import json
+import pdb
 
 '''
 README:
@@ -42,6 +44,7 @@ class CustomerCluster(object):
         self.car_preds = None
         self.new_priors = None
         self.pca = None
+        self.orig_dest = None
 
     def load(self,
              car_data = '/Users/LaughingMan/Desktop/Data/Cars/cleaned_car_data.pkl',
@@ -180,9 +183,9 @@ class CustomerCluster(object):
         km.fit(self.car_preds)
         self.cars['car_pref_cluster'] = km.predict(self.car_preds)
 
-    def present_car_cluster(self,i):
+    def _present_car_cluster(self,i):
         '''
-        IMPUT: integer, representing a car cluster
+        INPUT: integer, representing a car cluster
         OUTPUT: None.
 
         Print top 10 most common cars in the specified cluster.
@@ -192,9 +195,9 @@ class CustomerCluster(object):
         print list(self.cars[self.cars['cluster'] == i]
                 ['sipp_code'].value_counts()[0:9].index)
 
-    def present_customer_cluster(self, i):
+    def _present_customer_cluster(self, i):
         '''
-        IMPUT: integer, representing a customer cluster
+        INPUT: integer, representing a customer cluster
         OUTPUT: None
 
         Print top 6 most common cars for each car cluster in the order
@@ -215,6 +218,36 @@ class CustomerCluster(object):
             print 'car cluster: ' + str(j[1])
             print 'top cars in cluster: ' + str(j[0])
 
+    def _create_orig_dest_dict(self):
+        '''
+        INPUT: None
+        OUTPUT: writes out a javascript hashable array for use in d3
+
+        This will create an origin/destination dict, i.e. for each country
+        there is an entry, and each entry is itself a dict that associates
+        all incoming traffic to the original country with sub countries and
+        their clusters. E.g.
+        {US: {SE:1, GB:2}}
+        Means that people coming to the US from SE are in cluster 1 and people
+        coming to US from GB are in cluster 2.
+        '''
+        d = {}
+        origin = np.unique(self.cars['customer_country'])
+        origin = [x for x in origin if str(x) != 'nan']
+        destination = np.unique(self.cars['destination'])
+        destination = [x for x in destination if str(x) != 'nan']
+
+        for o in origin:
+            d[o] = {}
+            cond_o = self.cars['customer_country'] == o
+            for d in destination:
+                cond_d = self.cars['destination'] == d
+                if self.cars[cond_o & cond_d].shape[0] > 0:
+                    print o, d
+                    d[o][d] = self.cars[cond_o & cond_d]['car_pref_cluster'].value_counts()
+        self.orig_dest = d
+
+
 #This is just a function for returning the pdf of a gamma distriubtuion.
 def tg(x, a, b, c ):
     return gamma(a, loc = b, scale = c).pdf(x)
@@ -226,4 +259,5 @@ if __name__ == '__main__':
     cc.dummy_matrix()
     cc.create_nb_priors(flatten=1)
     cc.fit_nb_cartypes(use_weights=True)
-    cc.fit_kmeans_customer_types()
+    cc.fit_kmeans_customer_types(clusters=10)
+    cc._create_orig_dest_dict()
