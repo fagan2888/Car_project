@@ -3,7 +3,7 @@
 <style>
 
 body {
-  background: #fcfcfa;
+  background: #565656;
 }
 
 .fill {
@@ -24,8 +24,8 @@ body {
 <script src="https://code.jquery.com/jquery-1.10.2.js"></script>
 <script>
 
-var width = 1250,
-    height = 680;
+var width = 1420,
+    height = 780;
 
 var orig_dest = (function () {
     var json = null;
@@ -43,10 +43,10 @@ var orig_dest = (function () {
 
 var color = d3.scale.ordinal()
 		  .domain([1,2,3,4,5,6,7,8,9,10])
-		  .range(["#8dd3c7","#ffffb3","#bebada","#fb8072","#80b1d3","#fdb462","#b3de69","#fccde5","#d9d9d9","#bc80bd"]);
+		  .range(["#8dd3c7","#f8f3aa","#bebada","#fb8072","#80b1d3","#fdb462","#b3de69","#fccde5","#b15928","#bc80bd"]);
 
 var projection = d3.geo.patterson()
-    .scale(200)
+    .scale(220)
     .translate([width / 2, height / 2])
     .precision(.1);
 
@@ -66,6 +66,7 @@ d3.json("topo_world.json", function(error, world) {
     	.enter().insert("path", ".graticule")
       .attr("class", "country")
       .attr("d", path)
+      .attr("fill", "#adadad")
 
 			.on("mouseover", function(d) {
         d3.selectAll(".country")
@@ -81,7 +82,7 @@ d3.json("topo_world.json", function(error, world) {
 	      d3.selectAll(".country")
 					.transition()
 					.duration(250)
-	        .attr("fill", "#000");
+	        .attr("fill", "#adadad");
 		  });
 
   svg.insert("path", ".graticule")
