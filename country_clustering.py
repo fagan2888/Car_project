@@ -45,7 +45,6 @@ class CustomerCluster(object):
         self.car_preds = None
         self.new_priors = None
         self.pca = None
-        self.orig_dest = None
 
     def load(self,
              car_data = '/Users/LaughingMan/Desktop/Data/Cars/cleaned_car_data.pkl',
@@ -219,10 +218,11 @@ class CustomerCluster(object):
             print 'car cluster: ' + str(j[1])
             print 'top cars in cluster: ' + str(j[0])
 
-    def _create_orig_dest_dict(self):
+    def _create_d3_data(self):
         '''
         INPUT: None
-        OUTPUT: writes out a javascript hashable array for use in d3
+        OUTPUT: writes out a javascript hashable array for use in d3 and
+                information about each cluster.
 
         This will create an origin/destination dict, i.e. for each country
         there is an entry, and each entry is itself a dict that associates
@@ -231,6 +231,8 @@ class CustomerCluster(object):
         {US: {SE:1, GB:2}}
         Means that people coming to the US from SE are in cluster 1 and people
         coming to US from GB are in cluster 2.
+        This also writes out information about each prefernece cluster to
+        another json array.
         '''
         thedict = {}
         origin = np.unique(self.cars['customer_country'])
@@ -244,13 +246,24 @@ class CustomerCluster(object):
             for d in destination:
                 cond_d = self.cars['destination'] == d
                 if np.sum(cond_o & cond_d) > 0:
-                    thedict[o][d] = int(self.cars[cond_o & cond_d]['car_pref_cluster'].value_counts()[0:1].index[0])
-        self.orig_dest = thedict
+                    thedict[o][d] = int(self.cars[cond_o & cond_d]\
+                        ['car_pref_cluster'].value_counts()[0:1].index[0])
 
         with open('/Users/LaughingMan/Desktop/zipfian/zipfian_project/country_analysis/cc_map/orig_dest.json', 'w') as outfile:
             json.dump(thedict, outfile)
 
+        thedict = {}
+        for c in np.unique(self.cars['car_pref_cluster']):
+            thedict[str(c)] = {}
+            indices = self.cars[self.cars['car_pref_cluster'] == c]\
+                ['cluster'].value_counts()[0:6].index
+            for i,k in enumerate(indices):
+                top_cars = list(self.cars[self.cars['cluster'] == k]\
+                    ['car_name'].value_counts()[0:1].index)
+                thedict[str(c)][str(i)] = "Cluster " + str(k) + ": " + ", ".join(top_cars)
 
+        with open('/Users/LaughingMan/Desktop/zipfian/zipfian_project/country_analysis/cc_map/cc_info.json', 'w') as outfile:
+            json.dump(thedict, outfile)
 
 #This is just a function for returning the pdf of a gamma distriubtuion.
 def tg(x, a, b, c ):
@@ -264,4 +277,4 @@ if __name__ == '__main__':
     cc.create_nb_priors(flatten=1)
     cc.fit_nb_cartypes(use_weights=True)
     cc.fit_kmeans_customer_types(clusters=10)
-    cc._create_orig_dest_dict()
+    cc._create_d3_data()

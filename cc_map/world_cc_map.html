@@ -16,12 +16,48 @@ body {
   stroke-width: .7px;
 }
 
+#tooltip {
+				position: absolute;
+				width: 300px;
+				height: auto;
+				padding: 10px;
+				background-color: white;
+				-webkit-border-radius: 10px;
+				-moz-border-radius: 10px;
+				border-radius: 10px;
+				-webkit-box-shadow: 4px 4px 10px rgba(0, 0, 0, 0.4);
+				-moz-box-shadow: 4px 4px 10px rgba(0, 0, 0, 0.4);
+				box-shadow: 4px 4px 10px rgba(0, 0, 0, 0.4);
+				pointer-events: none;
+}
+
+#tooltip.hidden {
+	display: none;
+}
+
+#tooltip p {
+	margin: 0;
+	font-family: sans-serif;
+	font-size: 16px;
+	line-height: 20px;
+}
+
 </style>
 <body>
 <script src="http://d3js.org/d3.v3.min.js"></script>
 <script src="http://d3js.org/d3.geo.projection.v0.min.js"></script>
 <script src="http://d3js.org/topojson.v1.min.js"></script>
 <script src="https://code.jquery.com/jquery-1.10.2.js"></script>
+<script src="http://underscorejs.org/underscore.js"></script>
+<div id="tooltip" class="hidden">
+			<p><span id="value1">1000</span></p>
+      <p><span id="value2">1000</span></p>
+      <p><span id="value3">1000</span></p>
+      <p><span id="value4">1000</span></p>
+      <p><span id="value5">1000</span></p>
+      <p><span id="value6">1000</span></p>
+      <p><span id="value7">1000</span></p>
+</div>
 <script>
 
 var width = 1420,
@@ -40,6 +76,29 @@ var orig_dest = (function () {
     });
     return json;
 })();
+
+var cc_info = (function () {
+    var json = null;
+    $.ajax({
+        'async': false,
+        'global': false,
+        'url': "cc_info.json",
+        'dataType': "json",
+        'success': function (data) {
+            json = data;
+        }
+    });
+    return json;
+})();
+
+var cc_info_arr = [];
+
+for(var x in cc_info){
+  cc_info_arr.push(cc_info[x]);
+}
+
+console.log(cc_info_arr)
+console.log(cc_info)
 
 var color = d3.scale.ordinal()
 		  .domain([1,2,3,4,5,6,7,8,9,10])
@@ -91,6 +150,38 @@ d3.json("topo_world.json", function(error, world) {
       .attr("d", path);
 
 });
+
+svg.selectAll("circle")
+    .data(cc_info_arr)
+    .enter()
+    .append("circle")
+    .attr("cx", function(d, i) {
+      return width/2 + ((i-5) * 70);
+    })
+    .attr("cy", height*.9)
+    .attr("fill", function(d, i) {
+      return color(i+1);
+    })
+    .attr("r", 20)
+    .on("mouseover",function(d, i) {
+      var xPosition = width/2 + ((i-5) * 70) -150;
+			var yPosition = height*.7;
+      d3.select("#tooltip")
+      .style("left", xPosition + "px")
+			.style("top", yPosition + "px")
+			.selectAll("p")
+            .attr("id", function(p,i){
+              return i;
+            })
+						   .text(function(p,i){
+              return d[i];
+            })
+      d3.select("#tooltip").classed("hidden", false);
+    })
+    .on("mouseout", function() {
+		  d3.select("#tooltip").classed("hidden", true);
+    });
+
 
 d3.select(self.frameElement).style("height", height + "px");
 
