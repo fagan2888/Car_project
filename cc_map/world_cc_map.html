@@ -21,7 +21,7 @@ body {
 				width: 300px;
 				height: auto;
 				padding: 10px;
-				background-color: white;
+				background-color: "#F9F6ED";
 				-webkit-border-radius: 10px;
 				-moz-border-radius: 10px;
 				border-radius: 10px;
@@ -113,10 +113,6 @@ var cc_info_arr = [];
 for(var x in cc_info){
   cc_info_arr.push(cc_info[x]);
 }
-console.log(orig_dest)
-console.log(incoming_info)
-console.log(cc_info_arr)
-console.log(cc_info)
 
 var color = d3.scale.ordinal()
 		  .domain([1,2,3,4,5,6,7,8,9,10])
@@ -192,7 +188,7 @@ svg.selectAll("circle")
     .attr("r", 20)
     .on("mouseover",function(d, i) {
       var xPosition = width/2 + ((i-5) * 70) -150;
-			var yPosition = height*.7;
+			var yPosition = height*.67;
       d3.select("#tooltip")
       .style("left", xPosition + "px")
 			.style("top", yPosition + "px")
@@ -203,7 +199,7 @@ svg.selectAll("circle")
 						.text(function(p,i){
               return d[i];
             })
-            .style("color", "#000")
+            .style("color", "#E8D9C5")
       d3.select("#tooltip").classed("hidden", false);
     })
     .on("mouseout", function() {

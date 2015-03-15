@@ -260,7 +260,7 @@ class CustomerCluster(object):
             for i,k in enumerate(indices):
                 top_cars = list(self.cars[self.cars['cluster'] == k]\
                     ['car_name'].value_counts()[0:1].index)
-                thedict[str(c)][str(i)] = "Cluster " + str(k) + ": " + ", ".join(top_cars)
+                thedict[str(c)][str(i)] = "Car Group " + str(k) + ": " + ", ".join(top_cars)
 
         with open('/Users/LaughingMan/Desktop/zipfian/zipfian_project/country_analysis/cc_map/cc_info.json', 'w') as outfile:
             json.dump(thedict, outfile)
@@ -274,7 +274,7 @@ class CustomerCluster(object):
                 o = np.unique(self.cars[cond1 & cond2]['customer_country'])
                 o = [str(x) for x in o if str(x) != 'nan']
                 o = o[:10]
-                thedict[d][str(c)] = "Incoming from cluster " + str(c) + ": " + ", ".join(o)
+                thedict[d][str(c)] = "To " + d + " from cluster " + str(c) + ": " + ", ".join(o)
 
         with open('/Users/LaughingMan/Desktop/zipfian/zipfian_project/country_analysis/cc_map/incoming_info.json', 'w') as outfile:
             json.dump(thedict, outfile)
