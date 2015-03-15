@@ -221,8 +221,8 @@ class CustomerCluster(object):
     def _create_d3_data(self):
         '''
         INPUT: None
-        OUTPUT: writes out a javascript hashable array for use in d3 and
-                information about each cluster.
+        OUTPUT: writes out a javascript hashable arrays for use in d3.
+                These conatian information about each cluster.
 
         This will create an origin/destination dict, i.e. for each country
         there is an entry, and each entry is itself a dict that associates
@@ -240,13 +240,13 @@ class CustomerCluster(object):
         destination = np.unique(self.cars['destination'])
         destination = [x for x in destination if str(x) != 'nan']
 
-        for o in origin:
-            cond_o = self.cars['customer_country'] == o
-            thedict[o] = {}
-            for d in destination:
-                cond_d = self.cars['destination'] == d
+        for d in destination:
+            cond_d = self.cars['destination'] == d
+            thedict[d] = {}
+            for o in origin:
+                cond_o = self.cars['customer_country'] == o
                 if np.sum(cond_o & cond_d) > 0:
-                    thedict[o][d] = int(self.cars[cond_o & cond_d]\
+                    thedict[d][o] = int(self.cars[cond_o & cond_d]\
                         ['car_pref_cluster'].value_counts()[0:1].index[0])
 
         with open('/Users/LaughingMan/Desktop/zipfian/zipfian_project/country_analysis/cc_map/orig_dest.json', 'w') as outfile:
@@ -264,6 +264,21 @@ class CustomerCluster(object):
 
         with open('/Users/LaughingMan/Desktop/zipfian/zipfian_project/country_analysis/cc_map/cc_info.json', 'w') as outfile:
             json.dump(thedict, outfile)
+
+        thedict = {}
+        for d in np.unique(self.cars['destination']):
+            thedict[d] = {}
+            cond1 = self.cars['destination'] == d
+            for c in np.unique(self.cars[cond1]['car_pref_cluster']):
+                cond2 = self.cars['car_pref_cluster'] == c
+                o = np.unique(self.cars[cond1 & cond2]['customer_country'])
+                o = [str(x) for x in o if str(x) != 'nan']
+                o = o[:10]
+                thedict[d][str(c)] = "Incoming from cluster " + str(c) + ": " + ", ".join(o)
+
+        with open('/Users/LaughingMan/Desktop/zipfian/zipfian_project/country_analysis/cc_map/incoming_info.json', 'w') as outfile:
+            json.dump(thedict, outfile)
+
 
 #This is just a function for returning the pdf of a gamma distriubtuion.
 def tg(x, a, b, c ):

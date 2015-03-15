@@ -57,6 +57,9 @@ body {
       <p><span id="value5">1000</span></p>
       <p><span id="value6">1000</span></p>
       <p><span id="value7">1000</span></p>
+      <p><span id="value8">1000</span></p>
+      <p><span id="value9">1000</span></p>
+      <p><span id="value10">1000</span></p>
 </div>
 <script>
 
@@ -69,6 +72,20 @@ var orig_dest = (function () {
         'async': false,
         'global': false,
         'url': "orig_dest.json",
+        'dataType': "json",
+        'success': function (data) {
+            json = data;
+        }
+    });
+    return json;
+})();
+
+var incoming_info = (function () {
+    var json = null;
+    $.ajax({
+        'async': false,
+        'global': false,
+        'url': "incoming_info.json",
         'dataType': "json",
         'success': function (data) {
             json = data;
@@ -96,13 +113,14 @@ var cc_info_arr = [];
 for(var x in cc_info){
   cc_info_arr.push(cc_info[x]);
 }
-
+console.log(orig_dest)
+console.log(incoming_info)
 console.log(cc_info_arr)
 console.log(cc_info)
 
 var color = d3.scale.ordinal()
 		  .domain([1,2,3,4,5,6,7,8,9,10])
-		  .range(["#8dd3c7","#f8f3aa","#bebada","#fb8072","#80b1d3","#fdb462","#b3de69","#fccde5","#b15928","#bc80bd"]);
+		  .range(["#8dd3c7","#FF8C00","#bebada","#fb8072","#80b1d3","#fdb462","#b3de69","#fccde5","#b15928","#bc80bd"]);
 
 var projection = d3.geo.patterson()
     .scale(220)
@@ -127,22 +145,31 @@ d3.json("topo_world.json", function(error, world) {
       .attr("d", path)
       .attr("fill", "#adadad")
 
-			.on("mouseover", function(d) {
+			.on("click", function(d) {
         d3.selectAll(".country")
-					.filter(function(c){
-						return c.id in orig_dest[d.id];
-					})
           .attr("fill", function(c){
-						return color(orig_dest[d.id][c.id])
-					})
-			})
+            if (c.id in orig_dest[d.id]) {return color(orig_dest[d.id][c.id]+1)}
+						else {return "#adadad"}
+					});
+        d3.select("#tooltip")
+          .style("left", width*.01 + "px")
+    	    .style("top", height*.5 + "px")
+    	    .selectAll("p")
+                .attr("id", function(p,i){
+                  return i;
+                })
+    	    			.text(function(p,i){
+                  return incoming_info[d.id][i];
+                })
+                .style("color", function(p,i){
+                  return color(i+1);
+                })
+          d3.select("#tooltip").classed("hidden", false);
 
-		  .on("mouseout", function(d) {
-	      d3.selectAll(".country")
-					.transition()
-					.duration(250)
-	        .attr("fill", "#adadad");
-		  });
+			})
+      .on("mouseout", function() {
+  		  d3.select("#tooltip").classed("hidden", true);
+      })
 
   svg.insert("path", ".graticule")
       .datum(topojson.mesh(world, world.objects.world, function(a, b) { return a !== b; }))
@@ -173,9 +200,10 @@ svg.selectAll("circle")
             .attr("id", function(p,i){
               return i;
             })
-						   .text(function(p,i){
+						.text(function(p,i){
               return d[i];
             })
+            .style("color", "#000")
       d3.select("#tooltip").classed("hidden", false);
     })
     .on("mouseout", function() {
