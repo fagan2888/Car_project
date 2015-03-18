@@ -6,12 +6,11 @@ import pickle as pkl
 from scipy import sparse
 from sklearn.naive_bayes import BernoulliNB
 from sklearn.cross_validation import train_test_split
-from sklearn.metrics import confusion_matrix
 from scipy.optimize import curve_fit
 from scipy.stats import gamma
+from sklearn.metrics import classification_report
+from sklearn.metrics import confusion_matrix
 import json
-import pdb
-from itertools import product
 
 '''
 README:
@@ -32,7 +31,11 @@ operates in the following order:
 6) fit_kmeans_customer_types() : creates clusters of different customer types
                                  depending on their probability ranking from
                                  step 4.
+
+Other methods also exist, mostly to describe the outputs or evaluate the
+results of this process. See each method description for further details.
 '''
+
 
 class CustomerCluster(object):
     def __init__(self):
@@ -40,15 +43,17 @@ class CustomerCluster(object):
         self.binarized_sipp = None
         self.country_dummies = None
         self.country_dummies_colnames = None
-        self.nb_confusion_mat = None
-        self.km_confusion_mat = None
+        self.nb_confusion = None
+        self.nb_accuracy = None
+        self.nb_reports = None
         self.car_preds = None
         self.new_priors = None
         self.pca = None
+        self.path = '/Users/LaughingMan/Desktop/zipfian/zipfian_project/'
+        self.baseline = None
+        self.nb_top2_accuracy = None
 
-    def load(self,
-             car_data = '/Users/LaughingMan/Desktop/Data/Cars/cleaned_car_data.pkl',
-             sipp_decomp = '/Users/LaughingMan/Desktop/Data/Cars/sipp_decomp.pkl'):
+    def load(self, car_data=None, sipp_decomp=None):
         '''
         INPUT: file paths for the origin/destination data (i.e. car_data) and
                sipp code decomposition (i.e. sipp_decomp)
@@ -56,6 +61,17 @@ class CustomerCluster(object):
 
         This just reads the datasets into the object.
         '''
+        if car_data:
+            pass
+        else:
+            car_data = '/Users/LaughingMan/Desktop/Data/Cars' \
+                       '/cleaned_car_data.pkl'
+        if sipp_decomp:
+            pass
+        else:
+            sipp_decomp = '/Users/LaughingMan/Desktop/Data/Cars' \
+                          '/sipp_decomp.pkl'
+
         file = open(car_data, 'rb')
         self.cars = pkl.load(file)
         file.close()
@@ -64,7 +80,7 @@ class CustomerCluster(object):
         self.binarized_sipp = pkl.load(file)
         file.close()
 
-    def binary_pca_clustering(self,pca_components=15,kmean_clusters=15):
+    def binary_pca_clustering(self, pca_components=15, kmean_clusters=15):
         '''
         INPUT: number of components for pca, number of clusters for kmeans
         OUTPUT: None.
@@ -73,9 +89,9 @@ class CustomerCluster(object):
         clustering to find cars with similar properties. It then assigns those
         car clusters to customers in the origin_destion dataframe.
         '''
-        self.pca = PCA(n_components = pca_components)
+        self.pca = PCA(n_components=pca_components)
         target_pca = self.pca.fit_transform(self.binarized_sipp)
-        kmean = KMeans(n_clusters = kmean_clusters)
+        kmean = KMeans(n_clusters=kmean_clusters)
         kmean.fit(target_pca)
         clusters = kmean.predict(target_pca)
         self.cars['cluster'] = clusters
@@ -91,9 +107,9 @@ class CustomerCluster(object):
         pairwise mulitplicaations of the origin/distination dummy variables.
         '''
         origin = pd.get_dummies(self.cars['customer_country'])
-        origin.columns = ['o'+ x for x in origin.columns]
+        origin.columns = ['o' + x for x in origin.columns]
         dest = pd.get_dummies(self.cars['destination'])
-        dest.columns = ['d'+ x for x in dest.columns]
+        dest.columns = ['d' + x for x in dest.columns]
 
         self.cars['origin_dest'] = \
             self.cars['customer_country'].apply(lambda x: 'o' + str(x)) + \
@@ -104,16 +120,16 @@ class CustomerCluster(object):
             for d in dest.columns:
                 pairwise_names.append(o+d)
 
-        pairwise_matrix = sparse.csc_matrix((96341,1))
+        pairwise_matrix = sparse.csc_matrix((96341, 1))
         for o in origin.columns:
             for d in dest.columns:
+                t_f = origin[o] * dest[d]
                 pairwise_matrix = sparse.hstack([pairwise_matrix,
-                    sparse.csr_matrix(origin[o]*dest[d]).T])
-        pairwise_matrix = pairwise_matrix[:,1:]
+                                                 sparse.csr_matrix(t_f).T])
+        pairwise_matrix = pairwise_matrix[:, 1:]
 
-        self.country_dummies_colnames = list(origin.columns) + \
-                                        list(dest.columns) + \
-                                        pairwise_names
+        self.country_dummies_colnames = \
+            list(origin.columns) + list(dest.columns) + pairwise_names
 
         origin_sparse = sparse.csc_matrix(origin)
         dest_sparse = sparse.csc_matrix(dest)
@@ -122,7 +138,7 @@ class CustomerCluster(object):
                                               dest_sparse,
                                               pairwise_matrix])
 
-    def create_nb_priors(self,flatten = .15):
+    def create_nb_priors(self, flatten=.15):
         '''
         INPUT: flatten parameter.
         OUTPUT: None.
@@ -132,39 +148,65 @@ class CustomerCluster(object):
         distribution. These priors are then used in the Naieve Bayes predict
         proba.
         '''
-        prefs = self.cars['cluster'].value_counts()/ \
-                sum(self.cars['cluster'].value_counts())
-        vals = np.array([x+1 for x in range(len(prefs))])
+        def tg(x, a, b, c):
+            return gamma(a, loc=b, scale=c).pdf(x)
+
+        vc = self.cars['cluster'].value_counts()
+        prefs = vc / sum(vc)
+        vals = np.array([x + 1 for x in range(len(prefs))])
         params, pcov = curve_fit(tg, vals, prefs)
-        new_priors = tg(vals, params[0]+flatten, params[1], params[2])
-        self.new_priors = new_priors/sum(new_priors)
+        new_priors = tg(vals, params[0] + flatten, params[1], params[2])
+        self.new_priors = new_priors / sum(new_priors)
 
     def fit_nb_cartypes(self, use_weights=False):
         '''
         INPUT: None
         OUTPUT: None
 
-        This runs a naieve bayes algorithim on the country_dummies matrix to
+        This runs a naive bayes algorithim on the country_dummies matrix to
         predict the kind of car cluster that that individual preffers. It then
         creates a probability ranking over clusters for each individual in the
         dataset.
         '''
         if use_weights:
-            self.nb = BernoulliNB(class_prior = self.new_priors)
+            self.nb = BernoulliNB(class_prior=self.new_priors)
         else:
             self.nb = BernoulliNB()
-
-        X_train, X_test, y_train, y_test = \
-            train_test_split(self.country_dummies, self.cars['cluster'],
-                             test_size=0.2, random_state=42)
-        self.nb.fit(X_train, y_train)
-        pred = self.nb.predict(X_test)
-        self.nb_confusion_mat = confusion_matrix(y_test, pred)
 
         self.nb.fit(self.country_dummies, self.cars['cluster'])
         self.car_preds = self.nb.predict_proba(self.country_dummies)
 
-    def fit_kmeans_customer_types(self, clusters = 20):
+    def _eval_(self):
+        '''
+        INPUT: None
+        OUTPUT: None
+
+        This function simply re-runs Naive Bayes, creates a classifier report,
+        and a confusion matrix. It also tests for accuracy, creates an accuracy
+        score based on overall predictions and the top 2 predicted car types.
+        '''
+        X_train, X_test, y_train, y_test = \
+            train_test_split(self.country_dummies, self.cars['cluster'],
+                             test_size=0.2, random_state=42)
+
+        nb = BernoulliNB(class_prior=self.new_priors)
+        nb.fit(X_train, y_train)
+        pred = nb.predict(X_test)
+        self.nb_confusion = confusion_matrix(y_test, pred)
+        diag_sum = np.trace(confusion_matrix(y_test, pred))
+        total = np.sum(confusion_matrix(y_test, pred))
+        self.nb_accuracy = diag_sum/float(total)
+        self.nb_reports = classification_report(y_test, pred)
+        self.baseline = np.bincount(y_test.T).max() / float(y_test.shape[0])
+
+        self.probs = nb.predict_proba(X_test)
+        top2 = np.argsort(self.probs, axis=1)[:, -2:]
+        t_f = []
+        for i in xrange(y_test.shape[0]):
+            t_f.append(np.in1d(y_test[i], top2[i])[0])
+        self.nb_top2_accuracy = sum(t_f)/float(len(t_f))
+
+    def fit_kmeans_customer_types(self, clusters=20):
         '''
         INPUT: integer, representing the number of customer types
         OUTPUT: None
@@ -172,28 +214,22 @@ class CustomerCluster(object):
         This uses KMeans on the prefference rankings in order to identify
         customer clusters with similar prefferences.
         '''
-        X_train, X_test, y_train, y_test = \
-            train_test_split(self.car_preds, self.cars['cluster'],
-                             test_size=0.2, random_state=42)
-        self.nb.fit(X_train, y_train)
-        pred = self.nb.predict(X_test)
-        self.km_confusion_mat = confusion_matrix(y_test, pred)
 
-        km = KMeans(n_clusters = clusters)
+        km = KMeans(n_clusters=clusters)
         km.fit(self.car_preds)
         self.cars['car_pref_cluster'] = km.predict(self.car_preds)
 
-    def _present_car_cluster(self,i):
+    def _present_car_cluster(self, i):
         '''
         INPUT: integer, representing a car cluster
         OUTPUT: None.
 
         Print top 10 most common cars in the specified cluster.
         '''
-        print list(self.cars[self.cars['cluster'] == i]\
-                ['car_name'].value_counts()[0:9].index)
-        print list(self.cars[self.cars['cluster'] == i]
-                ['sipp_code'].value_counts()[0:9].index)
+        car_name = self.cars[self.cars['cluster'] == i]['car_name']
+        print list(car_name.value_counts()[0:9].index)
+        sipp_code = self.cars[self.cars['cluster'] == i]['sipp_code']
+        print list(sipp_code.value_counts()[0:9].index)
 
     def _present_customer_cluster(self, i):
         '''
@@ -204,23 +240,23 @@ class CustomerCluster(object):
         that the car clusters are preffered as well as the top 5 associated
         origin/destination pairs for that customer cluster.
         '''
-        indices = self.cars[self.cars['car_pref_cluster'] == i]\
-            ['cluster'].value_counts()[0:6].index
+        indices = self.cars[self.cars['car_pref_cluster'] == i]['cluster']
+        indices = indices.value_counts()[0:6].index
         top_cars = []
         for k in indices:
-            top_cars.append((list(self.cars[self.cars['cluster'] == k]\
-                ['car_name'].value_counts()[0:5].index),k))
+            car_name = self.cars[self.cars['cluster'] == k]['car_name']
+            top_cars.append((list(car_name.value_counts()[0:5].index), k))
 
+        o_d = self.cars[self.cars['car_pref_cluster'] == i]['origin_dest']
         print 'origin/destination pairs: ' + \
-              str(list(self.cars[self.cars['car_pref_cluster'] == i]\
-                  ['origin_dest'].value_counts()[0:5].index))
+              str(list(o_d.value_counts()[0:5].index))
         for j in top_cars:
             print 'car cluster: ' + str(j[1])
             print 'top cars in cluster: ' + str(j[0])
 
-    def _create_d3_data(self):
+    def _create_d3_data(self, path=None):
         '''
-        INPUT: None
+        INPUT: output file directory
         OUTPUT: writes out a javascript hashable arrays for use in d3.
                 These conatian information about each cluster.
 
@@ -234,6 +270,11 @@ class CustomerCluster(object):
         This also writes out information about each prefernece cluster to
         another json array.
         '''
+        if path:
+            pass
+        else:
+            path = self.path
+
         thedict = {}
         origin = np.unique(self.cars['customer_country'])
         origin = [x for x in origin if str(x) != 'nan']
@@ -246,23 +287,24 @@ class CustomerCluster(object):
             for o in origin:
                 cond_o = self.cars['customer_country'] == o
                 if np.sum(cond_o & cond_d) > 0:
-                    thedict[d][o] = int(self.cars[cond_o & cond_d]\
-                        ['car_pref_cluster'].value_counts()[0:1].index[0])
-
-        with open('/Users/LaughingMan/Desktop/zipfian/zipfian_project/country_analysis/cc_map/orig_dest.json', 'w') as outfile:
+                    vals = self.cars[cond_o & cond_d]['car_pref_cluster']
+                    thedict[d][o] = int(vals.value_counts()[0:1].index[0])
+        pth = path + 'country_analysis/cc_map/orig_dest.json'
+        with open(pth, 'w') as outfile:
             json.dump(thedict, outfile)
 
         thedict = {}
         for c in np.unique(self.cars['car_pref_cluster']):
             thedict[str(c)] = {}
-            indices = self.cars[self.cars['car_pref_cluster'] == c]\
-                ['cluster'].value_counts()[0:6].index
-            for i,k in enumerate(indices):
-                top_cars = list(self.cars[self.cars['cluster'] == k]\
-                    ['car_name'].value_counts()[0:1].index)
-                thedict[str(c)][str(i)] = "Car Group " + str(k) + ": " + ", ".join(top_cars)
-
-        with open('/Users/LaughingMan/Desktop/zipfian/zipfian_project/country_analysis/cc_map/cc_info.json', 'w') as outfile:
+            cluster = self.cars[self.cars['car_pref_cluster'] == c]['cluster']
+            indices = cluster.value_counts()[0:6].index
+            for i, k in enumerate(indices):
+                car_names = self.cars[self.cars['cluster'] == k]['car_name']
+                top_cars = list(car_names.value_counts()[0:1].index)
+                thedict[str(c)][str(i)] = "Car Group " + str(k) + ": " + \
+                                          ", ".join(top_cars)
+        pth = path + 'country_analysis/cc_map/cc_info.json'
+        with open(pth, 'w') as outfile:
             json.dump(thedict, outfile)
 
         thedict = {}
@@ -274,21 +316,19 @@ class CustomerCluster(object):
                 o = np.unique(self.cars[cond1 & cond2]['customer_country'])
                 o = [str(x) for x in o if str(x) != 'nan']
                 o = o[:10]
-                thedict[d][str(c)] = "To " + d + " from cluster " + str(c) + ": " + ", ".join(o)
-
-        with open('/Users/LaughingMan/Desktop/zipfian/zipfian_project/country_analysis/cc_map/incoming_info.json', 'w') as outfile:
+                thedict[d][str(c)] = "To " + d + " from cluster " + str(c) + \
+                                     ": " + ", ".join(o)
+        pth = path + 'country_analysis/cc_map/incoming_info.json'
+        with open(pth, 'w') as outfile:
             json.dump(thedict, outfile)
 
-
-#This is just a function for returning the pdf of a gamma distriubtuion.
-def tg(x, a, b, c ):
-    return gamma(a, loc = b, scale = c).pdf(x)
 
 if __name__ == '__main__':
     cc = CustomerCluster()
     cc.load()
-    cc.binary_pca_clustering(pca_components=10,kmean_clusters=10)
+    cc.binary_pca_clustering(pca_components=10, kmean_clusters=10)
     cc.dummy_matrix()
+    cc._eval_()
     cc.create_nb_priors(flatten=1)
     cc.fit_nb_cartypes(use_weights=True)
     cc.fit_kmeans_customer_types(clusters=10)
